@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong Game - ChillSpot CUCEK</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #0f172a, #0d9488);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      font-family: "Inter", sans-serif;
+      color: white;
+    }
+    canvas {
+      background: rgba(0, 0, 0, 0.9);
+      border-radius: 12px;
+      margin-top: 20px;
+      box-shadow: 0px 0px 30px rgba(20, 184, 166, 0.8);
+    }
+    .mode-btn {
+      padding: 14px 26px;
+      border-radius: 10px;
+      margin: 10px;
+      font-size: 18px;
+      cursor: pointer;
+      font-weight: 600;
+      background: white;
+      color: #0d9488;
+      transition: 0.3s;
+    }
+    .mode-btn:hover {
+      background: #0d9488;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+<header class="bg-white w-full shadow-md sticky top-0">
+  <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+    <a class="text-2xl font-bold text-teal-600">ChillSpot CUCEK</a>
+    <p class="text-gray-600 text-sm">W/S vs ⬆ / ⬇</p>
+  </nav>
+</header>
+
+<!-- ✅ GAME MODE SELECTION SCREEN -->
+<div id="modeScreen" class="flex flex-col items-center mt-24">
+  <h1 class="text-4xl font-bold mb-6">Select Game Mode</h1>
+  
+  <button class="mode-btn" onclick="selectMode('single')">Single Player</button>
+  <button class="mode-btn" onclick="selectMode('multi')">Multiplayer</button>
+</div>
+
+<!-- GAME CANVAS -->
+<canvas id="pong" width="900" height="550" style="display: none;"></canvas>
+
+<script>
+const canvas = document.getElementById("pong");
+const ctx = canvas.getContext("2d");
+
+// Sound files
+const bounceSound = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav");
+const scoreSound = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-arcade-retro-jump-223.wav");
+const wallSound = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-game-ball-tap-2073.wav");
+
+let mode = null; // single / multi
+let gameRunning = false;
+
+// Scores
+let pScore = 0, cScore = 0;
+
+// Paddles
+const paddleWidth = 12, paddleHeight = 120;
+const player = { x: 20, y: 200, width: paddleWidth, height: paddleHeight, dy: 6, color: "#14b8a6" };
+const computer = { x: 868, y: 200, width: paddleWidth, height: paddleHeight, dy: 6, color: "#ec4899" };
+
+// Ball
+const ball = { x: 450, y: 275, radius: 10, speed: 6, dx: 6, dy: 6, color: "white" };
+
+// Power-up
+let powerUp = null;
+const powerTypes = ["BIG", "SMALL", "FAST", "SLOW", "SCORE"];
+
+// ✅ MODE SELECT SCREEN
+function selectMode(selected) {
+  mode = selected;
+  document.getElementById("modeScreen").style.display = "none";
+  canvas.style.display = "block";
+  showStartScreen();
+}
+
+// Draw shapes
+function drawRect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
+function drawCircle(x, y, r, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+
+// Draw net
+function drawNet() {
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  for (let i = 0; i < canvas.height; i += 20) ctx.fillRect(canvas.width/2 - 2, i, 4, 12);
+}
+
+// Draw score
+function drawScore() {
+  ctx.font = "40px Arial";
+  ctx.fillStyle = "white";
+  ctx.fillText(pScore, canvas.width / 4, 50);
+  ctx.fillText(cScore, canvas.width * 0.75, 50);
+}
+
+// Power-up
+function spawnPowerUp() {
+  powerUp = {
+    x: Math.random() * (canvas.width - 40) + 20,
+    y: Math.random() * (canvas.height - 40) + 20,
+    size: 18,
+    effect: powerTypes[Math.floor(Math.random() * powerTypes.length)]
+  };
+}
+function drawPowerUp() {
+  if (!powerUp) return;
+  ctx.fillStyle = "gold";
+  ctx.beginPath();
+  ctx.arc(powerUp.x, powerUp.y, powerUp.size, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function applyPower(paddle) {
+  switch (powerUp.effect) {
+    case "BIG": paddle.height += 40; break;
+    case "SMALL": paddle.height -= 30; break;
+    case "FAST": ball.speed += 3; break;
+    case "SLOW": ball.speed -= 2; break;
+    case "SCORE": paddle === player ? pScore++ : cScore++; break;
+  }
+  powerUp = null;
+  setTimeout(spawnPowerUp, 5000);
+}
+
+// Ball reset
+function resetBall() {
+  ball.x = canvas.width / 2;
+  ball.y = canvas.height / 2;
+  ball.dx = -ball.dx;
+  ball.speed = 6;
+}
+
+// Screens
+function showStartScreen() {
+  ctx.font = "45px Arial";
+  ctx.fillStyle = "white";
+  ctx.fillText("Press SPACE to Start", canvas.width / 3.5, canvas.height / 2);
+}
+function showEndScreen() {
+  ctx.font = "50px Arial";
+  ctx.fillText(
+    pScore > cScore ? "🎉 Player Wins!" : (mode === "single" ? "🤖 AI Wins!" : "Player 2 Wins!"),
+    canvas.width / 3.3,
+    canvas.height / 2
+  );
+  ctx.font = "30px Arial";
+  ctx.fillText("Press SPACE to Restart", canvas.width / 3.2, canvas.height / 2 + 60);
+}
+
+// GAME INPUT
+let keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+  if (e.key === " " && !gameRunning) startGame();
+});
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// START GAME
+function startGame() {
+  pScore = 0;
+  cScore = 0;
+  spawnPowerUp();
+  gameRunning = true;
+}
+
+// UPDATE (movement + logic)
+function update() {
+  if (!gameRunning) return;
+
+  ball.x += ball.dx;
+  ball.y += ball.dy;
+
+  // Wall bounce
+  if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
+    ball.dy = -ball.dy;
+    wallSound.play();
+  }
+
+  // Player controls
+  if (keys["w"]) player.y -= player.dy;
+  if (keys["s"]) player.y += player.dy;
+
+  // Computer paddle — only for single player mode
+  if (mode === "single") {
+    computer.y += (ball.y - (computer.y + computer.height / 2)) * 0.07;
+  } else {
+    if (keys["ArrowUp"]) computer.y -= computer.dy;
+    if (keys["ArrowDown"]) computer.y += computer.dy;
+  }
+
+  // Prevent paddles from going outside
+  [player, computer].forEach(p =>
+    p.y = Math.max(0, Math.min(canvas.height - p.height, p.y))
+  );
+
+  // Paddle collision
+  let paddle = ball.x < canvas.width / 2 ? player : computer;
+  if (
+    ball.x - ball.radius < paddle.x + paddle.width &&
+    ball.x + ball.radius > paddle.x &&
+    ball.y > paddle.y &&
+    ball.y < paddle.y + paddle.height
+  ) {
+    bounceSound.play();
+    ball.dx = -ball.dx;
+    ball.speed++;
+  }
+
+  // Score update
+  if (ball.x - ball.radius < 0) { cScore++; scoreSound.play(); resetBall(); }
+  if (ball.x + ball.radius > canvas.width) { pScore++; scoreSound.play(); resetBall(); }
+
+  // Power-up collision
+  if (powerUp) {
+    if (
+      ball.x > powerUp.x - powerUp.size &&
+      ball.x < powerUp.x + powerUp.size &&
+      ball.y > powerUp.y - powerUp.size &&
+      ball.y < powerUp.y + powerUp.size
+    ) {
+      applyPower(ball.x < canvas.width / 2 ? player : computer);
+    }
+  }
+
+  if (pScore >= 7 || cScore >= 7) {
+    gameRunning = false;
+    showEndScreen();
+  }
+}
+
+// DRAW EVERYTHING
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawNet();
+  drawScore();
+  drawRect(player.x, player.y, player.width, player.height, player.color);
+  drawRect(computer.x, computer.y, computer.width, computer.height, computer.color);
+  drawCircle(ball.x, ball.y, ball.radius, ball.color);
+  drawPowerUp();
+
+  requestAnimationFrame(render);
+}
+
+render();
+setInterval(update, 1000 / 60);
+</script>
+
+</body>
+</html>
